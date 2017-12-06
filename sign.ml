@@ -45,16 +45,16 @@ let link : t -> unit = fun sign ->
       Bindlib.unbox (Bindlib.bind_var x (lift (link_term t)))
     in
     match unfold t with
-    | Vari(x)     -> t
-    | Type        -> t
-    | Kind        -> t
-    | Symb(s)     -> Symb(link_symb s)
-    | Prod(i,a,b) -> Prod(i, link_term a, link_binder b)
-    | Abst(i,a,t) -> Abst(i, link_term a, link_binder t)
-    | Appl(i,t,u) -> Appl(i, link_term t, link_term u)
-    | Unif(_,_)   -> assert false
-    | ITag(_)     -> assert false
-    | Wild        -> Wild
+    | Vari(x)   -> t
+    | Type      -> t
+    | Kind      -> t
+    | Symb(s)   -> Symb(link_symb s)
+    | Prod{a;b} -> Prod{a=link_term a; b=link_binder b}
+    | Abst{a;b} -> Abst{a=link_term a; b=link_binder b}
+    | Appl{a;b} -> Appl{a=link_term a; b=link_term b}
+    | Unif(_,_) -> assert false
+    | ITag(_)   -> assert false
+    | Wild      -> Wild
   and link_rule r =
     let (xs, lhs) = Bindlib.unmbind mkfree r.lhs in
     let lhs = List.map link_term lhs in

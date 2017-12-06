@@ -14,11 +14,11 @@ type term =
   (** Symbol (static or definable). *)
   | Symb of symbol
   (** Dependent product. *)
-  | Prod of info * term * (term, term) Bindlib.binder
+  | Prod of { mutable a:term; mutable b:tbind }
   (** Abstraction. *)
-  | Abst of info * term * (term, term) Bindlib.binder
+  | Abst of { mutable a:term; mutable b:tbind }
   (** Application. *)
-  | Appl of info * term * term
+  | Appl of { mutable a:term; mutable b:term }
   (** Unification variable (used for inference). *)
   | Unif of unif * term array
   (** Integer tag (used for pattern-matching). *)
@@ -26,6 +26,7 @@ type term =
   (** Wildcard (used for pattern-matching). *)
   | Wild
 
+ and tbind = (term, term) Bindlib.binder
 (** Representation of a (static or definable) symbol. *)
  and symbol = Sym of sym | Def of def
 
@@ -82,9 +83,6 @@ type term =
    [Unif] constructor, which can be used to substitute the binder whenever the
    unification variable has been instanciated. *)
 
-(** Additional information on some [term] constructors. *)
- and info =
-  { closed : bool (** Set to [true] if the corresponding term is closed. *) }
 
 (** [new_unif ()] creates a fresh unification variable. *)
 let new_unif : unit -> unif =
@@ -127,24 +125,29 @@ let _Symb : symbol -> tbox = fun s -> Bindlib.box (Symb(s))
 
 (** [_Appl t u] lifts the application of [t] and [u] to the [bindbox] type. *)
 let _Appl : tbox -> tbox -> tbox = fun t u ->
-  let closed = Bindlib.is_closed t && Bindlib.is_closed u in
-  Bindlib.box_apply2 (fun t u -> Appl({closed},t,u)) t u
+  Bindlib.box_apply2 (fun a b -> Appl{a;b}) t u
 
 (** [_Prod a x f] lifts a dependent product node to the [bindbox] type given a
     boxed term [a] (the type of the domain), a prefered name [x] for the bound
     variable, and a function [f] to build the [binder] (codomain). *)
 let _Prod : tbox -> string -> (tvar -> tbox) -> tbox = fun a x f ->
   let b = Bindlib.vbind mkfree x f in
-  let closed = Bindlib.is_closed a && Bindlib.is_closed b in
-  Bindlib.box_apply2 (fun a b -> Prod({closed},a,b)) a b
+  Bindlib.box_apply2 (fun a b -> Prod{a;b}) a b
+
+(** Specific case when the binder is closed *)
+let _Prod_cl : tbox -> string -> tbind -> tbox = fun a x b ->
+  Bindlib.box_apply2 (fun a b -> Prod{a;b}) a (Bindlib.box b)
 
 (** [_Abst a x f] lifts an abstraction node to the [bindbox] type given a term
     [a] (the type of the bound variable),  the prefered name [x] for the bound
     variable, and the function [f] to build the [binder] (body). *)
 let _Abst : tbox -> string -> (tvar -> tbox) -> tbox = fun a x f ->
   let b = Bindlib.vbind mkfree x f in
-  let closed = Bindlib.is_closed a && Bindlib.is_closed b in
-  Bindlib.box_apply2 (fun a b -> Abst({closed},a,b)) a b
+  Bindlib.box_apply2 (fun a b -> Abst{a;b}) a b
+
+(** Specific case when the binder is closed *)
+let _Abst_cl : tbox -> string -> tbind -> tbox = fun a x b ->
+  Bindlib.box_apply2 (fun a b -> Abst{a;b}) a (Bindlib.box b)
 
 (** [_Unif u ar] lifts a unification variable [u] to the [bindbox] type, given
     its environment [ar]. The unification variable should not  be instanciated
@@ -167,46 +170,36 @@ let rec lift : term -> tbox = fun t ->
   | Type        -> _Type
   | Kind        -> _Kind
   | Symb(s)     -> _Symb s
-  | Prod(i,_,_) when i.closed -> Bindlib.box t
-  | Prod(_,a,b) -> _Prod (lift a) (Bindlib.binder_name b) (lift_binder b)
-  | Abst(i,_,_) when i.closed -> Bindlib.box t
-  | Abst(_,a,t) -> _Abst (lift a) (Bindlib.binder_name t) (lift_binder t)
-  | Appl(i,_,_) when i.closed -> Bindlib.box t
-  | Appl(_,t,u) -> _Appl (lift t) (lift u)
+  | Prod{a;b}   -> if Bindlib.binder_closed b then
+                     _Prod_cl (lift a) (Bindlib.binder_name b) b
+                   else
+                     _Prod (lift a) (Bindlib.binder_name b) (lift_binder b)
+  | Abst{a;b}   -> if Bindlib.binder_closed b then
+                     _Abst_cl (lift a) (Bindlib.binder_name b) b
+                   else
+                     _Abst (lift a) (Bindlib.binder_name b) (lift_binder b)
+  | Appl{a;b}   -> _Appl (lift a) (lift b)
   | Unif(r,m)   -> _Unif r (Array.map lift m)
   | ITag(i)     -> _ITag i
   | Wild        -> _Wild
 
-(** [is_closed t] tests whether the term [t] is closed,  using the information
-    stored in the [info] elements. *)
-let rec is_closed : term -> bool = fun t ->
-  match unfold t with
-  | Vari(_)     -> false
-  | Prod(i,_,_) -> i.closed
-  | Abst(i,_,_) -> i.closed
-  | Appl(i,_,_) -> i.closed
-  | Unif(_,ar)  -> Array.for_all is_closed ar
-  | _           -> true
-
 (** [appl t u] builds the application of the terms [t] and [u] (outside of the
     [bindbox] type), computing the correct value for the [closed] field. *)
-let appl : term -> term -> term = fun t u ->
-  let closed = is_closed t && is_closed u in
-  Appl({closed},t,u)
+let appl : term -> term -> term = fun a b ->
+  Appl{a;b}
 
-(** [prod a b] builds the product type of domain [a] and codomain [b] (outside 
+(** [prod a b] builds the product type of domain [a] and codomain [b] (outside
     of the [bindbox] type), computing the correct value for [closed]. *)
-let prod : term -> (term, term) Bindlib.binder -> term = fun a b ->
-  let closed = is_closed a && Bindlib.binder_closed b in
-  Prod({closed},a,b) 
+let prod : term -> tbind -> term = fun a b ->
+  Prod{a;b}
 
 (** [get_args t] returns a tuple [(h, args)] where [h] if the head of the term
     and [args] is the list of its arguments. *)
 let get_args : term -> term * term list = fun t ->
   let rec get_args acc t =
     match unfold t with
-    | Appl(_,t,u) -> get_args (u::acc) t
-    | t           -> (t, acc)
+    | Appl{a;b} -> get_args (b::acc) a
+    | t         -> (t, acc)
   in get_args [] t
 
 (** [add_args h args] builds the application of a term [h] to a list [args] of

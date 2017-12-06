@@ -16,16 +16,16 @@ let set_unif : unif -> (term, term) Bindlib.mbinder -> unit = fun u v ->
 (** [occurs u t] checks whether the unification variable [u] occurs in [t]. *)
 let rec occurs : unif -> term -> bool = fun r t ->
   match unfold t with
-  | Prod(_,a,b) -> occurs r a || occurs r (Bindlib.subst b Kind)
-  | Abst(_,a,t) -> occurs r a || occurs r (Bindlib.subst t Kind)
-  | Appl(_,t,u) -> occurs r t || occurs r u
-  | Unif(u,e)   -> u == r || Array.exists (occurs r) e
-  | Type        -> false
-  | Kind        -> false
-  | Vari(_)     -> false
-  | Symb(_)     -> false
-  | ITag(_)     -> false
-  | Wild        -> false
+  | Prod{a;b} -> occurs r a || occurs r (Bindlib.subst b Kind)
+  | Abst{a;b} -> occurs r a || occurs r (Bindlib.subst b Kind)
+  | Appl{a;b} -> occurs r a || occurs r b
+  | Unif(u,e) -> u == r || Array.exists (occurs r) e
+  | Type      -> false
+  | Kind      -> false
+  | Vari(_)   -> false
+  | Symb(_)   -> false
+  | ITag(_)   -> false
+  | Wild      -> false
 
 (** [unify u t] tries to unify [u] with [t], and returns a boolean to indicate
     whether it succeeded or not. Note that the function also verifies that the
@@ -66,15 +66,21 @@ let eq : term -> term -> bool = fun a b ->
     | (Kind         , Kind         ) -> true
     | (Symb(Sym(s1)), Symb(Sym(s2))) -> s1 == s2
     | (Symb(Def(s1)), Symb(Def(s2))) -> s1 == s2
-    | (Prod(_,a1,b1), Prod(_,a2,b2)) -> eq a1 a2 && eq_binder b1 b2
-    | (Abst(_,a1,t1), Abst(_,a2,t2)) -> eq a1 a2 && eq_binder t1 t2
-    | (Appl(_,t1,u1), Appl(_,t2,u2)) -> eq t1 t2 && eq u1 u2
     | (Wild         , _            ) -> assert false
     | (_            , Wild         ) -> assert false
     | (Unif(u1,e1)  , Unif(u2,e2)  ) when u1 == u2 -> assert(e1 == e2); true
     | (Unif(u,e)    , b            ) when unify u e b -> true
     | (a            , Unif(u,e)    ) -> unify u e a
     | (ITag(i1)     , ITag(i2)     ) -> i1 = i2
+    | (Prod{a=a1;b=b1}, Prod({a=a2;b=b2} as c2)) ->
+       (eq a1 a2 && (if a1 != a2 then c2.a <- a1; true)) &&
+         (eq_binder b1 b2 && (if b1 != b2 then c2.b <- b1; true))
+    | (Abst{a=a1;b=b1}, Abst({a=a2;b=b2} as c2)) ->
+       (eq a1 a2 && (if a1 != a2 then c2.a <- a1; true)) &&
+         (eq_binder b1 b2 && (if b1 != b2 then c2.b <- b1; true))
+    | (Appl{a=a1;b=b1}, Appl({a=a2;b=b2} as c2)) ->
+       (eq a1 a2 && (if a1 != a2 then c2.a <- a1; true)) &&
+         (eq b1 b2 && (if b1 != b2 then c2.b <- b1; true))
     | (_            , _            ) -> false
   in eq a b
 
@@ -141,9 +147,9 @@ let rec whnf : term -> term = fun t ->
 and whnf_stk : term -> stack -> term * stack = fun t stk ->
   match (unfold t, stk) with
   (* Push argument to the stack. *)
-  | (Appl(_,f,u) , stk    )       -> whnf_stk f (ref u :: stk)
+  | (Appl{a;b} , stk    )         -> whnf_stk a (ref b :: stk)
   (* Beta reduction. *)
-  | (Abst(_,_,f) , u::stk )       -> whnf_stk (Bindlib.subst f !u) stk
+  | (Abst{b}   , u::stk )         -> whnf_stk (Bindlib.subst b !u) stk
   (* Try to rewrite. *)
   | (Symb(Def(s)), stk    ) as st ->
       begin
@@ -186,28 +192,28 @@ and matching ar p t =
   let res =
     (* First handle patterns that do not need the evaluated term. *)
     match p with
-    | ITag(i) when ar.(i) = ITag(i) -> ar.(i) <- !t; true
-    | Wild                          -> true
-    | _                             ->
+    | ITag(i) when ar.(i) = ITag(i)    -> ar.(i) <- !t; true
+    | Wild                             -> true
+    | _                                ->
     (* Other cases need the term to be evaluated. *)
     t := whnf !t;
     match (p, !t) with
-    | (ITag(i)      , t            ) -> eq_modulo ar.(i) t (* t <> ITag(i) *)
-    | (Prod(_,a1,b1), Prod(_,a2,b2)) ->
-        let (_,b1,b2) = Bindlib.unbind2 mkfree b1 b2 in
-        matching ar a1 (ref a2) && matching ar b1 (ref b2)
-    | (Abst(_,_,t1) , Abst(_,_,t2) ) ->
-        let (_,t1,t2) = Bindlib.unbind2 mkfree t1 t2 in
-        matching ar t1 (ref t2)
-    | (Appl(_,t1,u1), Appl(_,t2,u2)) ->
-        matching ar t1 (ref t2) && matching ar u1 (ref u2)
-    | (Unif(_,_)    , _            ) -> assert false
-    | (_            , Unif(_,_)    ) -> assert false
-    | (Type         , Type         ) -> true
-    | (Kind         , Kind         ) -> true
-    | (Vari(x1)     , Vari(x2)     ) -> Bindlib.eq_vars x1 x2
-    | (Symb(s1)     , Symb(s2)     ) -> s1 == s2
-    | (_            , _            ) -> false
+    | (ITag(i)      , t              ) -> eq_modulo ar.(i) t (* t <> ITag(i) *)
+    | (Prod{a;b}    , Prod{a=a2;b=b2}) ->
+        let (_,b,b2) = Bindlib.unbind2 mkfree b b2 in
+        matching ar a (ref a2) && matching ar b (ref b2)
+    | (Abst{b}      , Abst{b=b2}     ) ->
+        let (_,b,b2) = Bindlib.unbind2 mkfree b b2 in
+        matching ar b (ref b2)
+    | (Appl{a;b}    , Appl{a=a2;b=b2}) ->
+        matching ar a (ref a2) && matching ar b (ref b2)
+    | (Unif(_,_)    , _              ) -> assert false
+    | (_            , Unif(_,_)      ) -> assert false
+    | (Type         , Type           ) -> true
+    | (Kind         , Kind           ) -> true
+    | (Vari(x1)     , Vari(x2)       ) -> Bindlib.eq_vars x1 x2
+    | (Symb(s1)     , Symb(s2)       ) -> s1 == s2
+    | (_            , _              ) -> false
   in
   if !debug_eval then log "matc" (r_or_g res "[%a] =~= [%a]") pp p pp !t; res
 
@@ -233,14 +239,14 @@ and eq_modulo : ?constr_on:bool -> term -> term -> bool =
         in
         let (a,b,l) = sync l (List.rev sa) (List.rev sb) in
         match (unfold a, unfold b) with
-        | (a            , b            ) when eq a b -> eq_modulo l
-        | (Abst(_,aa,ba), Abst(_,ab,bb)) ->
+        | (a              , b              ) when eq a b -> eq_modulo l
+        | (Abst{a=aa;b=ba}, Abst{a=ab;b=bb}) ->
             let x = mkfree (Bindlib.new_var mkfree "_eq_modulo_") in
             eq_modulo ((aa,ab)::(Bindlib.subst ba x, Bindlib.subst bb x)::l)
-        | (Prod(_,aa,ba), Prod(_,ab,bb)) ->
+        | (Prod{a=aa;b=ba}, Prod{a=ab;b=bb}) ->
             let x = mkfree (Bindlib.new_var mkfree "_eq_modulo_") in
             eq_modulo ((aa,ab)::(Bindlib.subst ba x, Bindlib.subst bb x)::l)
-        | (a            , b            ) ->
+        | (a              , b              ) ->
             constr_on && add_constraint a b && eq_modulo l
   in
   let res = eq_modulo [(a,b)] in

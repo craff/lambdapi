@@ -22,17 +22,17 @@ and has_type : Sign.t -> Ctxt.t -> term -> term -> bool = fun sign ctx t c ->
   let res =
     match unfold t with
     (* Sort *)
-    | Type        ->
+    | Type          ->
         eq_modulo ~constr_on:true c Kind
     (* Variable *)
-    | Vari(x)     ->
+    | Vari(x)       ->
         let cx = try Ctxt.find x ctx with Not_found -> assert false in
         eq_modulo ~constr_on:true cx c
     (* Symbol *)
-    | Symb(s)     ->
+    | Symb(s)       ->
         eq_modulo ~constr_on:true (symbol_type s) c
     (* Product *)
-    | Prod(_,a,b) ->
+    | Prod{a;b}     ->
         begin
           let (x,bx) = Bindlib.unbind mkfree b in
           let uses_x = Bindlib.binder_occur b in
@@ -43,7 +43,7 @@ and has_type : Sign.t -> Ctxt.t -> term -> term -> bool = fun sign ctx t c ->
           | c    -> err "[%a] is not a sort...\n" pp c; false
         end
     (* Abstraction *)
-    | Abst(_,a,t) ->
+    | Abst{a;b=t}   ->
         begin
           let (x,tx) = Bindlib.unbind mkfree t in
           let c = whnf c in
@@ -53,7 +53,7 @@ and has_type : Sign.t -> Ctxt.t -> term -> term -> bool = fun sign ctx t c ->
             | _         -> ()
           end;
           match unfold c with
-          | Prod(_,c,b) ->
+          | Prod{a=c;b} ->
               let bx = Bindlib.subst b (mkfree x) in
               let ctx_x = Ctxt.add x a ctx in
               eq_modulo ~constr_on:true a c &&
@@ -71,7 +71,7 @@ and has_type : Sign.t -> Ctxt.t -> term -> term -> bool = fun sign ctx t c ->
               assert(unfold c == c); false
         end
     (* Application *)
-    | Appl(_,t,u) ->
+    | Appl{a=t;b=u} ->
         begin
           match infer sign ctx t with
           | None    -> wrn "Cannot infer the type of [%a]\n%!" pp t; false
@@ -83,7 +83,7 @@ and has_type : Sign.t -> Ctxt.t -> term -> term -> bool = fun sign ctx t c ->
                   | _         -> ()
                 end;
                 match unfold a with
-                | Prod(_,a,b) ->
+                | Prod{a;b}   ->
                     eq_modulo ~constr_on:true (Bindlib.subst b u) c
                     && has_type sign ctx u a
                 | a           ->
@@ -92,10 +92,10 @@ and has_type : Sign.t -> Ctxt.t -> term -> term -> bool = fun sign ctx t c ->
               end
         end
     (* No rule apply. *)
-    | Kind        -> assert false
-    | ITag(_)     -> assert false
-    | Unif(_,_)   -> assert false
-    | Wild        -> assert false
+    | Kind          -> assert false
+    | ITag(_)       -> assert false
+    | Unif(_,_)     -> assert false
+    | Wild          -> assert false
   in
   if !debug_type then
     log "TYPE" (r_or_g res "%a ⊢ %a : %a") pp_ctxt ctx pp t pp c;
