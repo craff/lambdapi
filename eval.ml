@@ -65,7 +65,8 @@ let eq : term -> term -> bool = fun a b ->
     let eq_binder = Bindlib.eq_binder mkfree eq in
     match (unfold a, unfold b) with
     | (Symb(Sym(s1))  , Symb(Sym(s2))         ) -> s1 == s2
-    | (Symb(Def(s1))  , Symb(Def(s2))         ) -> s1 == s2
+    | (Unif(u1,e1)    , Unif(u2,e2)           ) when u1 == u2 -> true
+    | (Unif(u,e)      , b                     ) when unify u e b -> true
     | (Appl{a=a1;b=b1}, Appl({a=a2;b=b2} as c)) ->
        (eq a1 a2 && (if a1 != a2 then c.a <- a1; true)) &&
          (eq b1 b2 && (if b1 != b2 then c.b <- b1; true))
@@ -75,8 +76,7 @@ let eq : term -> term -> bool = fun a b ->
     | (Abst{a=a1;b=b1}, Abst({a=a2;b=b2} as c)) ->
        (eq a1 a2 && (if a1 != a2 then c.a <- a1; true)) &&
          (eq_binder b1 b2 && (if b1 != b2 then c.b <- b1; true))
-    | (Unif(u1,e1)    , Unif(u2,e2)           ) when u1 == u2 -> true
-    | (Unif(u,e)      , b                     ) when unify u e b -> true
+    | (Symb(Def(s1))  , Symb(Def(s2))         ) -> s1 == s2
     | (a              , Unif(u,e)             ) -> unify u e a
     | (Vari(x1)       , Vari(x2)              ) -> Bindlib.eq_vars x1 x2
     | (Type           , Type                  ) -> true
