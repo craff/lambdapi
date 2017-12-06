@@ -61,27 +61,25 @@ let eq : term -> term -> bool = fun a b ->
   let rec eq a b = a == b ||
     let eq_binder = Bindlib.eq_binder mkfree eq in
     match (unfold a, unfold b) with
-    | (Vari(x1)     , Vari(x2)     ) -> Bindlib.eq_vars x1 x2
-    | (Type         , Type         ) -> true
-    | (Kind         , Kind         ) -> true
-    | (Symb(Sym(s1)), Symb(Sym(s2))) -> s1 == s2
-    | (Symb(Def(s1)), Symb(Def(s2))) -> s1 == s2
-    | (Wild         , _            ) -> assert false
-    | (_            , Wild         ) -> assert false
-    | (Unif(u1,e1)  , Unif(u2,e2)  ) when u1 == u2 -> assert(e1 == e2); true
-    | (Unif(u,e)    , b            ) when unify u e b -> true
-    | (a            , Unif(u,e)    ) -> unify u e a
-    | (ITag(i1)     , ITag(i2)     ) -> i1 = i2
-    | (Prod{a=a1;b=b1}, Prod({a=a2;b=b2} as c2)) ->
-       (eq a1 a2 && (if a1 != a2 then c2.a <- a1; true)) &&
-         (eq_binder b1 b2 && (if b1 != b2 then c2.b <- b1; true))
-    | (Abst{a=a1;b=b1}, Abst({a=a2;b=b2} as c2)) ->
-       (eq a1 a2 && (if a1 != a2 then c2.a <- a1; true)) &&
-         (eq_binder b1 b2 && (if b1 != b2 then c2.b <- b1; true))
-    | (Appl{a=a1;b=b1}, Appl({a=a2;b=b2} as c2)) ->
-       (eq a1 a2 && (if a1 != a2 then c2.a <- a1; true)) &&
-         (eq b1 b2 && (if b1 != b2 then c2.b <- b1; true))
-    | (_            , _            ) -> false
+    | (Vari(x1)       , Vari(x2)              ) -> Bindlib.eq_vars x1 x2
+    | (Type           , Type                  ) -> true
+    | (Kind           , Kind                  ) -> true
+    | (Symb(Sym(s1))  , Symb(Sym(s2))         ) -> s1 == s2
+    | (Symb(Def(s1))  , Symb(Def(s2))         ) -> s1 == s2
+    | (Appl{a=a1;b=b1}, Appl({a=a2;b=b2} as c)) ->
+       (eq a1 a2 && (if a1 != a2 then c.a <- a1; true)) &&
+         (eq b1 b2 && (if b1 != b2 then c.b <- b1; true))
+    | (Prod{a=a1;b=b1}, Prod({a=a2;b=b2} as c)) ->
+       (eq a1 a2 && (if a1 != a2 then c.a <- a1; true)) &&
+         (eq_binder b1 b2 && (if b1 != b2 then c.b <- b1; true))
+    | (Abst{a=a1;b=b1}, Abst({a=a2;b=b2} as c)) ->
+       (eq a1 a2 && (if a1 != a2 then c.a <- a1; true)) &&
+         (eq_binder b1 b2 && (if b1 != b2 then c.b <- b1; true))
+    | (ITag(i1)       , ITag(i2)              ) -> i1 = i2
+    | (Unif(u1,e1)    , Unif(u2,e2)           ) when u1 == u2 -> true
+    | (Unif(u,e)      , b                     ) when unify u e b -> true
+    | (a              , Unif(u,e)             ) -> unify u e a
+    | (_              , _                     ) -> false
   in eq a b
 
 (* NOTE it might be a good idea to undo unification variable instanciations in
