@@ -74,8 +74,8 @@ type term =
 
 (** Representation of a unification variable (or meta-variable). *)
  and unif =
-   { key   : int
-   ; value : (term, term) Bindlib.mbinder option ref }
+   { key           : int
+   ; mutable value : (term, term) Bindlib.mbinder option }
 
 (* NOTE a unification variables is represented using a multiple binder. Hence,
    it can be instanciated with an open term, which free variables are bound in
@@ -90,16 +90,16 @@ let new_unif : unit -> unif =
   fun () ->
     incr c;
     if !debug_unif then log "unif" "?%i created" !c;
-    { key = !c ; value = ref None }
+    { key = !c ; value = None }
 
 (** [unset u] returns [true] if [u] is not instanciated. *)
-let unset : unif -> bool = fun u -> !(u.value) = None
+let unset : unif -> bool = fun u -> u.value = None
 
 (** [unfold t] unfolds the toplevel unification / pattern variables in [t]. *)
 let rec unfold : term -> term = fun t ->
   match t with
-  | Unif({value = {contents = Some(f)}}, ar) -> unfold (Bindlib.msubst f ar)
-  | _                                        -> t
+  | Unif({value = Some(f)}, ar) -> unfold (Bindlib.msubst f ar)
+  | _                           -> t
 
 (** Short name for term variables. *)
 type tvar = term Bindlib.var

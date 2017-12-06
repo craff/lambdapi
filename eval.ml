@@ -8,16 +8,19 @@ open Print
 (** [set_unif u v] sets the value of the unification variable [u] to [v]. Note
     that [u] should not have already been instanciated. *)
 let set_unif : unif -> (term, term) Bindlib.mbinder -> unit = fun u v ->
-  assert(unset u); u.value := Some(v);
+  assert(unset u); u.value <- Some(v);
   if !debug_unif then
     let (env,a) = Bindlib.unmbind mkfree v in
     log "unif" "?%i[%a] ← %a" u.key (Array.pp pp_tvar ",") env pp a
 
 (** [occurs u t] checks whether the unification variable [u] occurs in [t]. *)
 let rec occurs : unif -> term -> bool = fun r t ->
+  let occurs_binder b = if Bindlib.binder_closed b then false
+                        else occurs r (Bindlib.subst b Kind)
+  in
   match unfold t with
-  | Prod{a;b} -> occurs r a || occurs r (Bindlib.subst b Kind)
-  | Abst{a;b} -> occurs r a || occurs r (Bindlib.subst b Kind)
+  | Prod{a;b} -> occurs r a || occurs_binder b
+  | Abst{a;b} -> occurs r a || occurs_binder b
   | Appl{a;b} -> occurs r a || occurs r b
   | Unif(u,e) -> u == r || Array.exists (occurs r) e
   | Type      -> false
@@ -61,9 +64,6 @@ let eq : term -> term -> bool = fun a b ->
   let rec eq a b = a == b ||
     let eq_binder = Bindlib.eq_binder mkfree eq in
     match (unfold a, unfold b) with
-    | (Vari(x1)       , Vari(x2)              ) -> Bindlib.eq_vars x1 x2
-    | (Type           , Type                  ) -> true
-    | (Kind           , Kind                  ) -> true
     | (Symb(Sym(s1))  , Symb(Sym(s2))         ) -> s1 == s2
     | (Symb(Def(s1))  , Symb(Def(s2))         ) -> s1 == s2
     | (Appl{a=a1;b=b1}, Appl({a=a2;b=b2} as c)) ->
@@ -75,10 +75,13 @@ let eq : term -> term -> bool = fun a b ->
     | (Abst{a=a1;b=b1}, Abst({a=a2;b=b2} as c)) ->
        (eq a1 a2 && (if a1 != a2 then c.a <- a1; true)) &&
          (eq_binder b1 b2 && (if b1 != b2 then c.b <- b1; true))
-    | (ITag(i1)       , ITag(i2)              ) -> i1 = i2
     | (Unif(u1,e1)    , Unif(u2,e2)           ) when u1 == u2 -> true
     | (Unif(u,e)      , b                     ) when unify u e b -> true
     | (a              , Unif(u,e)             ) -> unify u e a
+    | (Vari(x1)       , Vari(x2)              ) -> Bindlib.eq_vars x1 x2
+    | (Type           , Type                  ) -> true
+    | (Kind           , Kind                  ) -> true
+    | (ITag(i1)       , ITag(i2)              ) -> i1 = i2
     | (_              , _                     ) -> false
   in eq a b
 
