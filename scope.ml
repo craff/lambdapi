@@ -26,6 +26,12 @@ let scope : (unit -> tbox) option -> env -> Sign.t -> p_term -> tbox =
           end
       | P_Vari(fs,x)  ->
           begin
+            if not (fs = Sign.(sign.path) || Hashtbl.mem Sign.(sign.deps) fs) then
+              begin
+                let cur = String.concat "." Sign.(sign.path) in
+                let req = String.concat "." fs in
+                fatal "No module %s loaded in %s...\n%!" req cur
+              end;
             try
               let sg = Hashtbl.find Sign.loaded fs in
               try _Symb (Sign.find sg x) with Not_found ->
@@ -118,9 +124,12 @@ let scope_rule : Sign.t -> p_rule -> Ctxt.t * def * term * term * rule =
           | None    -> raise Not_found
           | Some(a) -> to_term ~vars sign a (* FIXME order ? *)
         with Not_found ->
+          (* FIXME order (temporary hack.
           let fn (_,x) = Bindlib.box_of_var x in
           let vars = List.map fn vars in
           Bindlib.unbox (_Unif (new_unif ()) (Array.of_list vars))
+          *)
+          Bindlib.unbox (_Unif (new_unif ()) (Array.map Bindlib.box_of_var xs))
       in
       ((Bindlib.name_of x, x) :: vars, Ctxt.add x a ctx)
     in

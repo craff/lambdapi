@@ -3,7 +3,6 @@ TESTFILES    = $(wildcard tests/*.dk) \
 							 $(wildcard examples/*.dk) \
 							 $(wildcard other_examples/*.dk) \
 							 $(wildcard dedukti_tests/OK/*.dk)
-MATITAFILES  = $(wildcard matita/*.dk)
 OK_TESTFILES = $(wildcard dedukti_tests/OK/*.dk)
 KO_TESTFILES = $(wildcard dedukti_tests/KO/*.dk)
 SHELL = /bin/bash
@@ -26,9 +25,34 @@ tests: lambdapi.native
 	done
 
 .PHONY: matita
-matita: lambdapi.native $(MATITAFILES)
+matita: lambdapi.native $(wildcard libraries/matita/*.dk)
 	@echo "## Compiling matita library ##"
-	@cd matita && ../lambdapi.native --verbose 2 matita.dk
+	@cd libraries/matita && time ../../lambdapi.native matita.dk
+
+.PHONY: focalide
+focalide: lambdapi.native $(wildcard libraries/focalide/*.dk)
+	@echo "## Compiling focalide library ##"
+	@cd libraries/focalide && time ../../lambdapi.native focalide.dk
+
+.PHONY: holide
+holide: lambdapi.native $(wildcard libraries/holide/*.dk)
+	@echo "## Compiling holide library ##"
+	@cd libraries/holide && time ../../lambdapi.native holide.dk
+
+.PHONY: verine
+verine: lambdapi.native $(wildcard libraries/verine/*.dk)
+	@echo "## Compiling verine library ##"
+	@cd libraries/verine && time ../../lambdapi.native verine.dk
+
+.PHONY: iProverModulo
+ifneq ("$(wildcard libraries/iProverModulo)","")
+iProverModulo: lambdapi.native $(wildcard libraries/iProverModulo/*.dk)
+	@echo "## Compiling iProverModulo library ##"
+	@cd libraries/iProverModulo && time ../../lambdapi.native iProverModulo.dk
+else
+iProverModulo:
+	@echo "You must first run 'libraries/iProverModulo.sh'"
+endif
 
 unit_tests: lambdapi.native
 	@echo "## OK tests ##"
