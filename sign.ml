@@ -138,7 +138,6 @@ let unlink : t -> unit = fun sign ->
   in
   Hashtbl.iter fn sign.symbols;
   let gn path ls =
-    let sign = try Hashtbl.find loaded path with Not_found -> assert false in
     let h (n, r) = unlink_rule r in
     List.iter h ls
   in
