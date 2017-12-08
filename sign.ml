@@ -106,16 +106,16 @@ let unlink : t -> unit = fun sign ->
       unlink_term t
     in
     match unfold t with
-    | Vari(x)     -> ()
-    | Type        -> ()
-    | Kind        -> ()
-    | Symb(s)     -> unlink_symb s
-    | Prod(i,a,b) -> unlink_term a; unlink_binder b
-    | Abst(i,a,t) -> unlink_term a; unlink_binder t
-    | Appl(i,t,u) -> unlink_term t; unlink_term u
-    | Unif(_,_)   -> assert false
-    | ITag(_)     -> assert false
-    | Wild        -> ()
+    | Vari(x)   -> ()
+    | Type      -> ()
+    | Kind      -> ()
+    | Symb(s)   -> unlink_symb s
+    | Prod{a;b} -> unlink_term a; unlink_binder b
+    | Abst{a;b} -> unlink_term a; unlink_binder b
+    | Appl{a;b} -> unlink_term a; unlink_term b
+    | Unif(_,_) -> assert false
+    | ITag(_)   -> assert false
+    | Wild      -> ()
   and unlink_rule r =
     let (xs, lhs) = Bindlib.unmbind mkfree r.lhs in
     List.iter unlink_term lhs;
