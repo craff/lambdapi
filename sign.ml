@@ -98,6 +98,53 @@ let link : t -> unit = fun sign ->
   in
   Hashtbl.filter_map_inplace gn sign.deps
 
+(** [link sign] establishes physical links between equal symbols. *)
+let unlink : t -> unit = fun sign ->
+  let rec unlink_term t =
+    let unlink_binder b =
+      let (x,t) = Bindlib.unbind mkfree b in
+      unlink_term t
+    in
+    match unfold t with
+    | Vari(x)     -> ()
+    | Type        -> ()
+    | Kind        -> ()
+    | Symb(s)     -> unlink_symb s
+    | Prod(i,a,b) -> unlink_term a; unlink_binder b
+    | Abst(i,a,t) -> unlink_term a; unlink_binder t
+    | Appl(i,t,u) -> unlink_term t; unlink_term u
+    | Unif(_,_)   -> assert false
+    | ITag(_)     -> assert false
+    | Wild        -> ()
+  and unlink_rule r =
+    let (xs, lhs) = Bindlib.unmbind mkfree r.lhs in
+    List.iter unlink_term lhs;
+    let (xs, rhs) = Bindlib.unmbind mkfree r.rhs in
+    unlink_term rhs
+  and unlink_symb sym =
+    match sym with
+    | Sym(s) -> if s.sym_path <> sign.path then s.sym_type <- Type
+    | Def(s) -> if s.def_path <> sign.path then
+                  begin
+                    s.def_type <- Type;
+                    s.def_rules <- []
+                  end
+  in
+  let fn _ sym =
+    match sym with
+    | Sym(s) -> unlink_term s.sym_type
+    | Def(s) -> unlink_term s.def_type;
+                List.iter unlink_rule s.def_rules
+  in
+  Hashtbl.iter fn sign.symbols;
+  let gn path ls =
+    let sign = try Hashtbl.find loaded path with Not_found -> assert false in
+    let h (n, r) = unlink_rule r in
+    List.iter h ls
+  in
+  Hashtbl.iter gn sign.deps
+
+
 (** [new_static sign name a] creates a new, static symbol named [name] of type
     [a] the signature [sign]. The created symbol is also returned. *)
 let new_static : t -> string -> term -> sym =
@@ -124,9 +171,15 @@ let new_definable : t -> string -> term -> def =
 (** [write sign file] writes the signature [sign] to the file [fname]. *)
 let write : t -> string -> unit =
   fun sign fname ->
-    let oc = open_out fname in
-    Marshal.to_channel oc sign [Marshal.Closures];
-    close_out oc
+    let pid = Unix.fork () in
+    if pid = 0 then begin
+        let oc = open_out fname in
+        unlink sign;
+        Marshal.to_channel oc sign [Marshal.Closures];
+        close_out oc;
+        exit 0
+      end
+    else ignore (Unix.waitpid [] pid)
 
 (** [read fname] reads a signature from the file [fname]. *)
 let read : string -> t =
